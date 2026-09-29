@@ -20,9 +20,17 @@ const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY,
 });
 
+const SYSTEM_INSTRUCTION = `
+Zawsze odpowiadaj po polsku.
+Używaj naturalnego, poprawnego języka polskiego.
+Masz pamięć wcześniejszych rozmów przekazywaną przez previous_interaction_id.
+Jeżeli użytkownik nawiązuje do czegoś, o czym rozmawialiście wcześniej, wykorzystaj zapamiętany kontekst.
+Nie udawaj, że pamiętasz coś, czego nie ma w przekazanym kontekście.
+`;
+
 app.post("/api/chat", async (req, res) => {
   try {
-    const { message } = req.body;
+    const { message, previousInteractionId } = req.body;
 
     if (!message || !message.trim()) {
       return res.status(400).json({
@@ -30,14 +38,40 @@ app.post("/api/chat", async (req, res) => {
       });
     }
 
-   const interaction = await ai.interactions.create({
-  model: "gemini-3.5-flash-lite",
-  system_instruction: "Zawsze odpowiadaj po polsku. Używaj naturalnego, poprawnego języka polskiego.",
-  input: message,
-});
+    const input = message.trim();
+
+    const options = {
+      model: "gemini-3.5-flash-lite",
+      system_instruction: SYSTEM_INSTRUCTION,
+      input,
+    };
+
+    if (previousInteractionId) {
+      options.previous_interaction_id = previousInteractionId;
+    }
+
+    let interaction;
+
+    try {
+      interaction = await ai.interactions.create(options);
+    } catch (firstError) {
+      // Jeśli zapisany identyfikator wygasł lub został usunięty,
+      // rozpoczynamy nowy łańcuch zamiast całkowicie blokować czat.
+      if (previousInteractionId) {
+        console.warn("Nie udało się kontynuować pamięci Gemini. Rozpoczynam nowy kontekst.");
+        interaction = await ai.interactions.create({
+          model: "gemini-3.5-flash-lite",
+          system_instruction: SYSTEM_INSTRUCTION,
+          input,
+        });
+      } else {
+        throw firstError;
+      }
+    }
 
     res.json({
       reply: interaction.output_text,
+      interactionId: interaction.id,
     });
   } catch (error) {
     console.error("GEMINI ERROR:", error);
