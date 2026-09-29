@@ -523,60 +523,157 @@ textarea:focus {
 }
 
 /* =========================
-   TELEFON / MAŁY EKRAN
+   PRZYCISK MENU
+   ========================= */
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.menu-button {
+  display: none;
+
+  width: 36px;
+  height: 36px;
+
+  align-items: center;
+  justify-content: center;
+
+  padding: 0;
+
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  border-radius: 11px;
+
+  background: rgba(255, 255, 255, 0.55);
+  color: #343840;
+
+  cursor: pointer;
+
+  font-size: 18px;
+  line-height: 1;
+
+  box-shadow:
+    0 4px 12px rgba(31, 38, 52, 0.06);
+
+  transition:
+    background 0.18s ease,
+    transform 0.18s ease;
+}
+
+.menu-button:hover {
+  background: rgba(255, 255, 255, 0.9);
+  transform: translateY(-1px);
+}
+
+/* =========================
+   TELEFON
    ========================= */
 
 @media (max-width: 750px) {
   .app {
+    position: relative;
+
     padding: 0;
     gap: 0;
   }
 
-  .sidebar {
-    width: 210px;
+  /* Sidebar wysuwa się z lewej strony */
 
-    border-radius: 0 18px 18px 0;
+  .sidebar {
+    position: fixed;
+
+    top: 0;
+    left: 0;
+    bottom: 0;
+
+    z-index: 100;
+
+    width: 275px;
+    height: 100vh;
+
+    border-radius: 0 22px 22px 0;
+
+    transform: translateX(-105%);
+
+    transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+
+    box-shadow:
+      10px 0 40px rgba(31, 38, 52, 0.16);
   }
+
+  .sidebar.sidebar-open {
+    transform: translateX(0);
+  }
+
+  /* Główny panel zajmuje cały telefon */
 
   .main {
+    width: 100%;
+    height: 100vh;
+
     border-radius: 0;
-    border-left: none;
+    border: none;
   }
 
+  /* Pokazujemy hamburger */
+
+  .menu-button {
+    display: flex;
+  }
+
+  .header {
+    height: 58px;
+
+    padding: 0 15px;
+  }
+
+  .header h1 {
+    font-size: 17px;
+  }
+
+  /* Chat */
+
   .chat {
-    padding: 24px 16px 125px;
+    width: 100%;
+
+    padding: 24px 14px 125px;
   }
 
   .message {
     max-width: 88%;
+    font-size: 14px;
   }
 
+  /* Pole wpisywania */
+
   .input-area {
-    padding: 12px 12px 15px;
+    padding: 10px 10px 14px;
+  }
+
+  textarea {
+    min-height: 46px;
+
+    font-size: 14px;
   }
 
   .input-area button {
     min-width: 65px;
+    height: 46px;
+
     padding: 0 12px;
   }
 }
 
 @media (max-width: 520px) {
   .sidebar {
-    width: 185px;
-  }
-
-  .header {
-    padding: 0 16px;
-  }
-
-  .header h1 {
-    font-size: 16px;
+    width: 285px;
   }
 
   .chat {
-    padding-left: 12px;
-    padding-right: 12px;
+    padding-left: 11px;
+    padding-right: 11px;
   }
 
   .message {

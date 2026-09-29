@@ -6,6 +6,7 @@ function App() {
   const [chats, setChats] = useState([]);
   const [activeChatId, setActiveChatId] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Wczytanie zapisanych czatów
   useEffect(() => {
@@ -190,13 +191,19 @@ function App() {
     <div className="app">
 
       {/* PANEL HISTORII */}
-      <aside className="sidebar">
+      <aside className={`sidebar ${sidebarOpen ? "sidebar-open" : ""}`}>
         <div className="sidebar-top">
           <h2>Miruś AI</h2>
 
-          <button className="new-chat" onClick={createNewChat}>
-            + Nowy czat
-          </button>
+          <button
+  className="new-chat"
+  onClick={() => {
+    createNewChat();
+    setSidebarOpen(false);
+  }}
+>
+  + Nowy czat
+</button>
         </div>
 
         <div className="chat-history">
@@ -206,7 +213,10 @@ function App() {
               className={`history-item ${
                 chat.id === activeChatId ? "active" : ""
               }`}
-              onClick={() => setActiveChatId(chat.id)}
+              onClick={() => {
+  setActiveChatId(chat.id);
+  setSidebarOpen(false);
+}}
             >
               <span>{chat.title}</span>
 
@@ -228,9 +238,20 @@ function App() {
       <div className="main">
 
         <header className="header">
-          <h1>Miruś AI</h1>
-          <span>Gemini</span>
-        </header>
+  <div className="header-left">
+    <button
+      className="menu-button"
+      onClick={() => setSidebarOpen(!sidebarOpen)}
+      aria-label="Historia czatów"
+    >
+      ☰
+    </button>
+
+    <h1>Miruś AI</h1>
+  </div>
+
+  <span>Gemini</span>
+</header>
 
         <main className="chat">
 
