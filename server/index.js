@@ -30,10 +30,11 @@ app.post("/api/chat", async (req, res) => {
       });
     }
 
-    const interaction = await ai.interactions.create({
-      model: "gemini-3.8-flash",
-      input: message,
-    });
+   const interaction = await ai.interactions.create({
+  model: "gemini-3.8-flash",
+  system_instruction: "Zawsze odpowiadaj po polsku. Używaj naturalnego, poprawnego języka polskiego.",
+  input: message,
+});
 
     res.json({
       reply: interaction.output_text,
