@@ -67,14 +67,14 @@ body {
 }
 
 .message.user {
-  background: #f8f8f8;
-  color: rgb(200, 200, 200);
+  background: #017efa;
+  color: rgb(2, 2, 2);
   margin-left: auto;
 }
 
 .message.assistant {
   background: white;
-  border: 1px solid #ddd;
+  border: 1px solid #ffffff;
 }
 
 .input-area {
