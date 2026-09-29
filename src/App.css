@@ -30,7 +30,7 @@ body {
 }
 
 .header span {
-  color: #666;
+  color: #666666;
   font-size: 14px;
 }
 
@@ -68,7 +68,7 @@ body {
 
 .message.user {
   background: #ffffff;
-  color: #cccccc;
+  color: #666666;
   margin-left: auto;
 }
 
