@@ -63,12 +63,12 @@ body {
   border-radius: 16px;
   white-space: pre-wrap;
   line-height: 1.5;
-  font-size: 14px;
+  font-size: 10px;
 }
 
 .message.user {
-  background: #222;
-  color: white;
+  background: #f8f8f8;
+  color: rgb(200, 200, 200);
   margin-left: auto;
 }
 
