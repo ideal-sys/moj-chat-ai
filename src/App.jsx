@@ -191,6 +191,13 @@ function App() {
     <div className="app">
 
       {/* PANEL HISTORII */}
+      {sidebarOpen && (
+  <div
+    className="sidebar-overlay"
+    onClick={() => setSidebarOpen(false)}
+  />
+)}
+
       <aside className={`sidebar ${sidebarOpen ? "sidebar-open" : ""}`}>
         <div className="sidebar-top">
           <h2>Miruś AI</h2>
