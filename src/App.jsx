@@ -63,7 +63,7 @@ function App() {
   return (
     <div className="app">
       <header className="header">
-        <h1>Mój Chat AI</h1>
+        <h1>Miruś AI</h1>
         <span>Gemini</span>
       </header>
 
