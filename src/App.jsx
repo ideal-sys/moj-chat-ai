@@ -7,6 +7,8 @@ function App() {
   const [activeChatId, setActiveChatId] = useState(null);
   const [loading, setLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [imageMode, setImageMode] = useState(false);
+  const [imageAspectRatio, setImageAspectRatio] = useState("1:1");
   // ID ostatniej interakcji Gemini. Dzięki temu Gemini może pamiętać
   // wcześniejsze rozmowy także po zamknięciu strony.
   const [memoryInteractionId, setMemoryInteractionId] = useState(
@@ -204,10 +206,84 @@ function App() {
     }
   }
 
+  async function generateImage() {
+    if (!message.trim() || loading) return;
+
+    let chatId = activeChatId;
+    const prompt = message.trim();
+
+    if (!chatId) {
+      const newChat = { id: Date.now(), title: prompt.slice(0, 35), messages: [] };
+      setChats((prev) => [newChat, ...prev]);
+      setActiveChatId(newChat.id);
+      chatId = newChat.id;
+    }
+
+    const currentChat = chats.find((chat) => chat.id === chatId);
+    const currentMessages = currentChat?.messages || [];
+    const updatedMessages = [
+      ...currentMessages,
+      { role: "user", text: prompt, kind: "image-prompt" },
+    ];
+
+    setChats((prev) =>
+      prev.map((chat) =>
+        chat.id === chatId
+          ? {
+              ...chat,
+              title: chat.title === "Nowy czat" ? prompt.slice(0, 35) : chat.title,
+              messages: updatedMessages,
+            }
+          : chat
+      )
+    );
+
+    setMessage("");
+    setLoading(true);
+
+    try {
+      const response = await fetch("/api/generate-image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt, aspectRatio: imageAspectRatio }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Wystąpił błąd");
+
+      const finalMessages = [
+        ...updatedMessages,
+        { role: "assistant", text: "Wygenerowany obraz", image: data.image, kind: "image" },
+      ];
+
+      setChats((prev) =>
+        prev.map((chat) =>
+          chat.id === chatId ? { ...chat, messages: finalMessages } : chat
+        )
+      );
+    } catch (error) {
+      setChats((prev) =>
+        prev.map((chat) =>
+          chat.id === chatId
+            ? {
+                ...chat,
+                messages: [
+                  ...updatedMessages,
+                  { role: "assistant", text: "Wystąpił błąd: " + error.message },
+                ],
+              }
+            : chat
+        )
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
   function handleKeyDown(e) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      sendMessage();
+      imageMode ? generateImage() : sendMessage();
     }
   }
 
@@ -299,7 +375,7 @@ function App() {
 
           {!activeChat || activeChat.messages.length === 0 ? (
             <div className="welcome">
-              <h2>Witaj Mireczku 👋</h2>
+              <h2>Witaj 👋</h2>
               <p>W czym mogę Ci pomóc?</p>
             </div>
           ) : (
@@ -310,30 +386,65 @@ function App() {
                   msg.role === "user" ? "user" : "assistant"
                 }`}
               >
-                {msg.text}
+                {msg.image ? (
+                  <div className="generated-image-wrap">
+                    <img className="generated-image" src={msg.image} alt={msg.text || "Wygenerowany obraz"} />
+                    <a className="download-image" href={msg.image} download={`mirus-ai-${Date.now()}.png`}>
+                      Pobierz obraz
+                    </a>
+                  </div>
+                ) : (
+                  msg.text
+                )}
               </div>
             ))
           )}
 
           {loading && (
             <div className="message assistant">
-              Piszę...
+              {imageMode ? "Tworzę obraz..." : "Piszę..."}
             </div>
           )}
         </main>
 
-        <div className="input-area">
-          <textarea
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Napisz wiadomość..."
-            rows="1"
-          />
+        <div className="composer">
+          <div className="mode-bar">
+            <button
+              className={`image-mode-button ${imageMode ? "active" : ""}`}
+              onClick={() => setImageMode((prev) => !prev)}
+              disabled={loading}
+            >
+              🖼️ {imageMode ? "Obraz włączony" : "Generuj obraz"}
+            </button>
 
-          <button onClick={sendMessage} disabled={loading}>
-            Wyślij
-          </button>
+            {imageMode && (
+              <select
+                className="aspect-select"
+                value={imageAspectRatio}
+                onChange={(e) => setImageAspectRatio(e.target.value)}
+                disabled={loading}
+                aria-label="Proporcje obrazu"
+              >
+                <option value="1:1">1:1 kwadrat</option>
+                <option value="16:9">16:9 poziomo</option>
+                <option value="9:16">9:16 pionowo</option>
+              </select>
+            )}
+          </div>
+
+          <div className="input-area">
+            <textarea
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={imageMode ? "Opisz obraz, który mam stworzyć..." : "Napisz wiadomość..."}
+              rows="1"
+            />
+
+            <button onClick={imageMode ? generateImage : sendMessage} disabled={loading}>
+              {imageMode ? "Generuj" : "Wyślij"}
+            </button>
+          </div>
         </div>
 
       </div>

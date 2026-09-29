@@ -82,6 +82,42 @@ app.post("/api/chat", async (req, res) => {
   }
 });
 
+// Generowanie obrazu z opisu tekstowego
+app.post("/api/generate-image", async (req, res) => {
+  try {
+    const { prompt, aspectRatio = "1:1" } = req.body;
+
+    if (!prompt || !prompt.trim()) {
+      return res.status(400).json({ error: "Opis obrazu jest pusty." });
+    }
+
+    const allowedRatios = new Set(["1:1", "16:9", "9:16"]);
+    const safeAspectRatio = allowedRatios.has(aspectRatio) ? aspectRatio : "1:1";
+
+    const interaction = await ai.interactions.create({
+      model: "gemini-3.1-flash-image",
+      input: prompt.trim(),
+      response_format: {
+        type: "image",
+        mime_type: "image/png",
+        aspect_ratio: safeAspectRatio,
+        image_size: "1K",
+      },
+    });
+
+    if (!interaction.output_image?.data) {
+      return res.status(502).json({ error: "Gemini nie zwrócił obrazu." });
+    }
+
+    res.json({
+      image: `data:${interaction.output_image.mime_type || "image/png"};base64,${interaction.output_image.data}`,
+    });
+  } catch (error) {
+    console.error("IMAGE GENERATION ERROR:", error);
+    res.status(500).json({ error: "Nie udało się wygenerować obrazu." });
+  }
+});
+
 // Gotowa aplikacja React
 const distPath = path.join(__dirname, "..", "dist");
 
