@@ -68,7 +68,7 @@ body {
 
 .message.user {
   background: #ffffff;
-  color: rgb(2, 2, 2);
+  color: #cccccc;
   margin-left: auto;
 }
 
@@ -89,7 +89,7 @@ body {
 textarea {
   flex: 1;
   resize: none;
-  border: 1px solid #ccc;
+  border: 1px solid #cccccc;
   border-radius: 14px;
   padding: 14px;
   font-size: 16px;
