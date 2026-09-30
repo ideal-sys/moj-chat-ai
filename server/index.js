@@ -14,23 +14,19 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: "10mb" }));
 
 const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY,
 });
 
-const SYSTEM_INSTRUCTION = `
-Zawsze odpowiadaj po polsku.
-Używaj naturalnego, poprawnego języka polskiego.
-Masz pamięć wcześniejszych rozmów przekazywaną przez previous_interaction_id.
-Jeżeli użytkownik nawiązuje do czegoś, o czym rozmawialiście wcześniej, wykorzystaj zapamiętany kontekst.
-Nie udawaj, że pamiętasz coś, czego nie ma w przekazanym kontekście.
-`;
+/* =========================
+   ZWYKŁA ROZMOWA
+   ========================= */
 
 app.post("/api/chat", async (req, res) => {
   try {
-    const { message, previousInteractionId } = req.body;
+    const { message } = req.body;
 
     if (!message || !message.trim()) {
       return res.status(400).json({
@@ -38,43 +34,20 @@ app.post("/api/chat", async (req, res) => {
       });
     }
 
-    const input = message.trim();
-
-    const options = {
+    const interaction = await ai.interactions.create({
       model: "gemini-3.5-flash-lite",
-      system_instruction: SYSTEM_INSTRUCTION,
-      input,
-    };
-
-    if (previousInteractionId) {
-      options.previous_interaction_id = previousInteractionId;
-    }
-
-    let interaction;
-
-    try {
-      interaction = await ai.interactions.create(options);
-    } catch (firstError) {
-      // Jeśli zapisany identyfikator wygasł lub został usunięty,
-      // rozpoczynamy nowy łańcuch zamiast całkowicie blokować czat.
-      if (previousInteractionId) {
-        console.warn("Nie udało się kontynuować pamięci Gemini. Rozpoczynam nowy kontekst.");
-        interaction = await ai.interactions.create({
-          model: "gemini-3.5-flash-lite",
-          system_instruction: SYSTEM_INSTRUCTION,
-          input,
-        });
-      } else {
-        throw firstError;
-      }
-    }
+      system_instruction:
+        "Zawsze odpowiadaj po polsku. Używaj naturalnego, poprawnego języka polskiego.",
+      input: message.trim(),
+    });
 
     res.json({
-      reply: interaction.output_text,
-      interactionId: interaction.id,
+      reply:
+        interaction.output_text ||
+        "Nie udało się uzyskać odpowiedzi.",
     });
   } catch (error) {
-    console.error("GEMINI ERROR:", error);
+    console.error("GEMINI CHAT ERROR:", error);
 
     res.status(500).json({
       error: "Nie udało się uzyskać odpowiedzi od Gemini.",
@@ -82,43 +55,61 @@ app.post("/api/chat", async (req, res) => {
   }
 });
 
-// Generowanie obrazu z opisu tekstowego
+/* =========================
+   GENEROWANIE OBRAZU
+   ========================= */
+
 app.post("/api/generate-image", async (req, res) => {
   try {
-    const { prompt, aspectRatio = "1:1" } = req.body;
+    const { prompt } = req.body;
 
     if (!prompt || !prompt.trim()) {
-      return res.status(400).json({ error: "Opis obrazu jest pusty." });
+      return res.status(400).json({
+        error: "Opis obrazu jest pusty.",
+      });
     }
-
-    const allowedRatios = new Set(["1:1", "16:9", "9:16"]);
-    const safeAspectRatio = allowedRatios.has(aspectRatio) ? aspectRatio : "1:1";
 
     const interaction = await ai.interactions.create({
       model: "gemini-3.1-flash-image",
-      input: prompt.trim(),
+      input: `Wygeneruj obraz na podstawie poniższego opisu. Nie dodawaj niepotrzebnego tekstu. Zachowaj możliwie dokładnie intencję użytkownika.
+
+Opis:
+${prompt.trim()}`,
       response_format: {
         type: "image",
         mime_type: "image/png",
-        aspect_ratio: safeAspectRatio,
+        aspect_ratio: "1:1",
         image_size: "1K",
       },
     });
 
-    if (!interaction.output_image?.data) {
-      return res.status(502).json({ error: "Gemini nie zwrócił obrazu." });
+    const generatedImage = interaction.output_image;
+
+    if (!generatedImage || !generatedImage.data) {
+      return res.status(500).json({
+        error: "Gemini nie zwróciło obrazu.",
+      });
     }
 
+    const mimeType = generatedImage.mime_type || "image/png";
+
     res.json({
-      image: `data:${interaction.output_image.mime_type || "image/png"};base64,${interaction.output_image.data}`,
+      image: `data:${mimeType};base64,${generatedImage.data}`,
+      text: interaction.output_text || "",
     });
   } catch (error) {
-    console.error("IMAGE GENERATION ERROR:", error);
-    res.status(500).json({ error: "Nie udało się wygenerować obrazu." });
+    console.error("GEMINI IMAGE ERROR:", error);
+
+    res.status(500).json({
+      error: "Nie udało się wygenerować obrazu. Sprawdź limit i dostęp do modelu obrazowego Gemini.",
+    });
   }
 });
 
-// Gotowa aplikacja React
+/* =========================
+   FRONTEND
+   ========================= */
+
 const distPath = path.join(__dirname, "..", "dist");
 
 app.use(express.static(distPath));

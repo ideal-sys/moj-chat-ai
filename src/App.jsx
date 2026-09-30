@@ -6,47 +6,41 @@ function App() {
   const [chats, setChats] = useState([]);
   const [activeChatId, setActiveChatId] = useState(null);
   const [loading, setLoading] = useState(false);
+
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [imageMode, setImageMode] = useState(false);
-  const [imageAspectRatio, setImageAspectRatio] = useState("1:1");
-  // ID ostatniej interakcji Gemini. Dzięki temu Gemini może pamiętać
-  // wcześniejsze rozmowy także po zamknięciu strony.
-  const [memoryInteractionId, setMemoryInteractionId] = useState(
-    () => localStorage.getItem("mirus-ai-memory-id") || null
-  );
+  const [plusMenuOpen, setPlusMenuOpen] = useState(false);
+  const [mode, setMode] = useState("chat");
 
-  // Wczytanie zapisanych czatów
   useEffect(() => {
-    const savedChats = localStorage.getItem("mirus-ai-chats");
+    try {
+      const savedChats = localStorage.getItem("mirus-ai-chats");
 
-    if (savedChats) {
-      const parsedChats = JSON.parse(savedChats);
-      setChats(parsedChats);
+      if (savedChats) {
+        const parsedChats = JSON.parse(savedChats);
 
-      if (parsedChats.length > 0) {
-        setActiveChatId(parsedChats[0].id);
+        if (Array.isArray(parsedChats)) {
+          setChats(parsedChats);
+
+          if (parsedChats.length > 0) {
+            setActiveChatId(parsedChats[0].id);
+          }
+        }
       }
+    } catch (error) {
+      console.error("Nie udało się wczytać historii:", error);
     }
   }, []);
 
-  // Automatyczne zapisywanie
   useEffect(() => {
-    localStorage.setItem("mirus-ai-chats", JSON.stringify(chats));
-  }, [chats]);
-
-  // Zapamiętujemy identyfikator rozmowy po stronie Gemini.
-  useEffect(() => {
-    if (memoryInteractionId) {
-      localStorage.setItem("mirus-ai-memory-id", memoryInteractionId);
-    } else {
-      localStorage.removeItem("mirus-ai-memory-id");
+    try {
+      localStorage.setItem("mirus-ai-chats", JSON.stringify(chats));
+    } catch (error) {
+      console.warn(
+        "Nie udało się zapisać historii. Wygenerowane obrazy mogą zajmować dużo miejsca w pamięci przeglądarki.",
+        error
+      );
     }
-  }, [memoryInteractionId]);
-
-  function clearAiMemory() {
-    setMemoryInteractionId(null);
-    localStorage.removeItem("mirus-ai-memory-id");
-  }
+  }, [chats]);
 
   const activeChat = chats.find((chat) => chat.id === activeChatId);
 
@@ -60,6 +54,9 @@ function App() {
     setChats((prev) => [newChat, ...prev]);
     setActiveChatId(newChat.id);
     setMessage("");
+    setMode("chat");
+    setPlusMenuOpen(false);
+    setSidebarOpen(false);
   }
 
   function deleteChat(id) {
@@ -76,33 +73,38 @@ function App() {
     }
   }
 
-  function updateMessages(newMessages) {
-    setChats((prev) =>
-      prev.map((chat) =>
-        chat.id === activeChatId
-          ? {
-              ...chat,
-              messages: newMessages,
-              title:
-                chat.title === "Nowy czat" && newMessages.length > 0
-                  ? newMessages[0].text.slice(0, 35)
-                  : chat.title,
-            }
-          : chat
-      )
-    );
+  function selectMode(nextMode) {
+    setMode(nextMode);
+    setPlusMenuOpen(false);
+    setMessage("");
+  }
+
+  async function readJsonResponse(response) {
+    const contentType = response.headers.get("content-type") || "";
+
+    if (!contentType.includes("application/json")) {
+      const text = await response.text();
+
+      throw new Error(
+        response.ok
+          ? "Serwer zwrócił nieprawidłową odpowiedź."
+          : `Serwer zwrócił błąd (${response.status}).`
+      );
+    }
+
+    return response.json();
   }
 
   async function sendMessage() {
     if (!message.trim() || loading) return;
 
     let chatId = activeChatId;
+    const userMessage = message.trim();
 
-    // Jeśli nie ma aktywnego czatu, tworzymy go
     if (!chatId) {
       const newChat = {
         id: Date.now(),
-        title: message.trim().slice(0, 35),
+        title: userMessage.slice(0, 35),
         messages: [],
       };
 
@@ -111,19 +113,19 @@ function App() {
       chatId = newChat.id;
     }
 
-    const userMessage = message.trim();
     setMessage("");
+    setPlusMenuOpen(false);
+    setLoading(true);
 
     const currentChat = chats.find((chat) => chat.id === chatId);
     const currentMessages = currentChat?.messages || [];
 
-    const updatedMessages = [
-      ...currentMessages,
-      {
-        role: "user",
-        text: userMessage,
-      },
-    ];
+    const userEntry = {
+      role: "user",
+      text: userMessage,
+    };
+
+    const messagesWithUser = [...currentMessages, userEntry];
 
     setChats((prev) =>
       prev.map((chat) =>
@@ -134,57 +136,91 @@ function App() {
                 chat.title === "Nowy czat"
                   ? userMessage.slice(0, 35)
                   : chat.title,
-              messages: updatedMessages,
+              messages: messagesWithUser,
             }
           : chat
       )
     );
 
-    setLoading(true);
-
     try {
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          message: userMessage,
-          previousInteractionId: memoryInteractionId,
-        }),
-      });
+      if (mode === "image") {
+        const response = await fetch("/api/generate-image", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            prompt: userMessage,
+          }),
+        });
 
-      const data = await response.json();
+        const data = await readJsonResponse(response);
 
-      if (!response.ok) {
-        throw new Error(data.error || "Wystąpił błąd");
+        if (!response.ok) {
+          throw new Error(
+            data.error || "Nie udało się wygenerować obrazu."
+          );
+        }
+
+        const finalMessages = [
+          ...messagesWithUser,
+          {
+            role: "assistant",
+            type: "image",
+            image: data.image,
+            text: data.text || "",
+          },
+        ];
+
+        setChats((prev) =>
+          prev.map((chat) =>
+            chat.id === chatId
+              ? {
+                  ...chat,
+                  messages: finalMessages,
+                }
+              : chat
+          )
+        );
+      } else {
+        const response = await fetch("/api/chat", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            message: userMessage,
+          }),
+        });
+
+        const data = await readJsonResponse(response);
+
+        if (!response.ok) {
+          throw new Error(data.error || "Wystąpił błąd.");
+        }
+
+        const finalMessages = [
+          ...messagesWithUser,
+          {
+            role: "assistant",
+            text: data.reply,
+          },
+        ];
+
+        setChats((prev) =>
+          prev.map((chat) =>
+            chat.id === chatId
+              ? {
+                  ...chat,
+                  messages: finalMessages,
+                }
+              : chat
+          )
+        );
       }
-
-      if (data.interactionId) {
-        setMemoryInteractionId(data.interactionId);
-      }
-
-      const finalMessages = [
-        ...updatedMessages,
-        {
-          role: "assistant",
-          text: data.reply,
-        },
-      ];
-
-      setChats((prev) =>
-        prev.map((chat) =>
-          chat.id === chatId
-            ? {
-                ...chat,
-                messages: finalMessages,
-              }
-            : chat
-        )
-      );
     } catch (error) {
       const errorMessages = [
-        ...updatedMessages,
+        ...messagesWithUser,
         {
           role: "assistant",
           text: "Wystąpił błąd: " + error.message,
@@ -206,177 +242,112 @@ function App() {
     }
   }
 
-  async function generateImage() {
-    if (!message.trim() || loading) return;
-
-    let chatId = activeChatId;
-    const prompt = message.trim();
-
-    if (!chatId) {
-      const newChat = { id: Date.now(), title: prompt.slice(0, 35), messages: [] };
-      setChats((prev) => [newChat, ...prev]);
-      setActiveChatId(newChat.id);
-      chatId = newChat.id;
-    }
-
-    const currentChat = chats.find((chat) => chat.id === chatId);
-    const currentMessages = currentChat?.messages || [];
-    const updatedMessages = [
-      ...currentMessages,
-      { role: "user", text: prompt, kind: "image-prompt" },
-    ];
-
-    setChats((prev) =>
-      prev.map((chat) =>
-        chat.id === chatId
-          ? {
-              ...chat,
-              title: chat.title === "Nowy czat" ? prompt.slice(0, 35) : chat.title,
-              messages: updatedMessages,
-            }
-          : chat
-      )
-    );
-
-    setMessage("");
-    setLoading(true);
-
-    try {
-      const response = await fetch("/api/generate-image", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt, aspectRatio: imageAspectRatio }),
-      });
-
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Wystąpił błąd");
-
-      const finalMessages = [
-        ...updatedMessages,
-        { role: "assistant", text: "Wygenerowany obraz", image: data.image, kind: "image" },
-      ];
-
-      setChats((prev) =>
-        prev.map((chat) =>
-          chat.id === chatId ? { ...chat, messages: finalMessages } : chat
-        )
-      );
-    } catch (error) {
-      setChats((prev) =>
-        prev.map((chat) =>
-          chat.id === chatId
-            ? {
-                ...chat,
-                messages: [
-                  ...updatedMessages,
-                  { role: "assistant", text: "Wystąpił błąd: " + error.message },
-                ],
-              }
-            : chat
-        )
-      );
-    } finally {
-      setLoading(false);
-    }
-  }
-
   function handleKeyDown(e) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      imageMode ? generateImage() : sendMessage();
+      sendMessage();
     }
   }
 
   return (
     <div className="app">
-
-      {/* PANEL HISTORII */}
       {sidebarOpen && (
-  <div
-    className="sidebar-overlay"
-    onClick={() => setSidebarOpen(false)}
-  />
-)}
+        <div
+          className="sidebar-overlay"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
 
       <aside className={`sidebar ${sidebarOpen ? "sidebar-open" : ""}`}>
         <div className="sidebar-top">
-          <h2>Miruś AI</h2>
+          <div className="sidebar-brand">
+            <h2>Miruś AI</h2>
 
-          <button
-  className="new-chat"
-  onClick={() => {
-    createNewChat();
-    setSidebarOpen(false);
-  }}
->
-  + Nowy czat
-</button>
+            <button
+              className="sidebar-close"
+              onClick={() => setSidebarOpen(false)}
+              aria-label="Zamknij historię"
+            >
+              ×
+            </button>
+          </div>
 
-          <button
-            className="new-chat"
-            onClick={() => {
-              clearAiMemory();
-              setSidebarOpen(false);
-            }}
-            title="Usuwa pamięć kontekstu Gemini. Historia czatów pozostaje."
-          >
-            🧠 Wyczyść pamięć AI
+          <button className="new-chat" onClick={createNewChat}>
+            <span>＋</span>
+            Nowy czat
           </button>
         </div>
 
         <div className="chat-history">
-          {chats.map((chat) => (
-            <div
-              key={chat.id}
-              className={`history-item ${
-                chat.id === activeChatId ? "active" : ""
-              }`}
-              onClick={() => {
-  setActiveChatId(chat.id);
-  setSidebarOpen(false);
-}}
-            >
-              <span>{chat.title}</span>
-
-              <button
-                className="delete-chat"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  deleteChat(chat.id);
+          {chats.length === 0 ? (
+            <div className="empty-history">
+              Twoje rozmowy pojawią się tutaj.
+            </div>
+          ) : (
+            chats.map((chat) => (
+              <div
+                key={chat.id}
+                className={`history-item ${
+                  chat.id === activeChatId ? "active" : ""
+                }`}
+                onClick={() => {
+                  setActiveChatId(chat.id);
+                  setSidebarOpen(false);
                 }}
               >
-                ×
-              </button>
-            </div>
-          ))}
+                <span>{chat.title}</span>
+
+                <button
+                  className="delete-chat"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    deleteChat(chat.id);
+                  }}
+                  aria-label="Usuń czat"
+                >
+                  ×
+                </button>
+              </div>
+            ))
+          )}
         </div>
       </aside>
 
-      {/* GŁÓWNA CZĘŚĆ */}
       <div className="main">
-
         <header className="header">
-  <div className="header-left">
-    <button
-      className="menu-button"
-      onClick={() => setSidebarOpen(!sidebarOpen)}
-      aria-label="Historia czatów"
-    >
-      ☰
-    </button>
+          <div className="header-left">
+            <button
+              className="menu-button"
+              onClick={() => setSidebarOpen((prev) => !prev)}
+              aria-label="Historia czatów"
+            >
+              ☰
+            </button>
 
-    <h1>Miruś AI</h1>
-  </div>
+            <h1>Miruś AI</h1>
+          </div>
 
-  <span>Gemini</span>
-</header>
+          <span>{mode === "image" ? "Generowanie obrazu" : "Gemini"}</span>
+        </header>
 
         <main className="chat">
-
           {!activeChat || activeChat.messages.length === 0 ? (
             <div className="welcome">
-              <h2>Witaj 👋</h2>
-              <p>W czym mogę Ci pomóc?</p>
+              <div className="welcome-icon">
+                {mode === "image" ? "✨" : "M"}
+              </div>
+
+              <h2>
+                {mode === "image"
+                  ? "Co mam dla Ciebie wygenerować?"
+                  : "Witaj 👋"}
+              </h2>
+
+              <p>
+                {mode === "image"
+                  ? "Opisz obraz, a Miruś AI go stworzy."
+                  : "W czym mogę Ci pomóc?"}
+              </p>
             </div>
           ) : (
             activeChat.messages.map((msg, index) => (
@@ -384,14 +355,21 @@ function App() {
                 key={index}
                 className={`message ${
                   msg.role === "user" ? "user" : "assistant"
-                }`}
+                } ${msg.type === "image" ? "image-message" : ""}`}
               >
-                {msg.image ? (
+                {msg.type === "image" ? (
                   <div className="generated-image-wrap">
-                    <img className="generated-image" src={msg.image} alt={msg.text || "Wygenerowany obraz"} />
-                    <a className="download-image" href={msg.image} download={`mirus-ai-${Date.now()}.png`}>
-                      Pobierz obraz
-                    </a>
+                    <img
+                      src={msg.image}
+                      alt="Wygenerowany obraz"
+                      className="generated-image"
+                    />
+
+                    {msg.text && (
+                      <div className="generated-image-caption">
+                        {msg.text}
+                      </div>
+                    )}
                   </div>
                 ) : (
                   msg.text
@@ -401,52 +379,74 @@ function App() {
           )}
 
           {loading && (
-            <div className="message assistant">
-              {imageMode ? "Tworzę obraz..." : "Piszę..."}
+            <div className="message assistant typing-message">
+              <span></span>
+              <span></span>
+              <span></span>
             </div>
           )}
         </main>
 
-        <div className="composer">
-          <div className="mode-bar">
+        <div className="input-area">
+          <div className="input-wrapper">
+            {plusMenuOpen && (
+              <div className="plus-menu">
+                <button
+                  onClick={() => selectMode("image")}
+                  className={mode === "image" ? "selected" : ""}
+                >
+                  <span className="plus-menu-icon">✨</span>
+
+                  <span>
+                    <strong>Generuj obraz</strong>
+                    <small>Stwórz obraz z opisu</small>
+                  </span>
+                </button>
+
+                <button
+                  onClick={() => selectMode("chat")}
+                  className={mode === "chat" ? "selected" : ""}
+                >
+                  <span className="plus-menu-icon">💬</span>
+
+                  <span>
+                    <strong>Rozmowa</strong>
+                    <small>Porozmawiaj z Mirusiem</small>
+                  </span>
+                </button>
+              </div>
+            )}
+
             <button
-              className={`image-mode-button ${imageMode ? "active" : ""}`}
-              onClick={() => setImageMode((prev) => !prev)}
-              disabled={loading}
+              className={`plus-button ${plusMenuOpen ? "open" : ""}`}
+              onClick={() => setPlusMenuOpen((prev) => !prev)}
+              aria-label="Dodaj opcję"
             >
-              🖼️ {imageMode ? "Obraz włączony" : "Generuj obraz"}
+              +
             </button>
 
-            {imageMode && (
-              <select
-                className="aspect-select"
-                value={imageAspectRatio}
-                onChange={(e) => setImageAspectRatio(e.target.value)}
-                disabled={loading}
-                aria-label="Proporcje obrazu"
-              >
-                <option value="1:1">1:1 kwadrat</option>
-                <option value="16:9">16:9 poziomo</option>
-                <option value="9:16">9:16 pionowo</option>
-              </select>
-            )}
-          </div>
-
-          <div className="input-area">
             <textarea
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={imageMode ? "Opisz obraz, który mam stworzyć..." : "Napisz wiadomość..."}
+              placeholder={
+                mode === "image"
+                  ? "Opisz obraz, który mam wygenerować..."
+                  : "Napisz wiadomość..."
+              }
               rows="1"
             />
 
-            <button onClick={imageMode ? generateImage : sendMessage} disabled={loading}>
-              {imageMode ? "Generuj" : "Wyślij"}
+            <button
+              className="send-button"
+              onClick={sendMessage}
+              disabled={loading || !message.trim()}
+              aria-label="Wyślij"
+            >
+              ↑
             </button>
           </div>
         </div>
-
       </div>
     </div>
   );
