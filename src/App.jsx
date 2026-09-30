@@ -299,7 +299,7 @@ function App() {
 
           {!activeChat || activeChat.messages.length === 0 ? (
             <div className="welcome">
-              <h2>Witaj 👋</h2>
+              <h2>Witaj Mireczku👋</h2>
               <p>W czym mogę Ci pomóc?</p>
             </div>
           ) : (
