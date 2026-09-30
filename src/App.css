@@ -1261,3 +1261,8 @@ body {
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
 }
+
+textarea,
+input {
+  font-size: 16px !important;
+}
