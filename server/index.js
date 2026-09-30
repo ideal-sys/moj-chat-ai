@@ -21,7 +21,7 @@ const ai = new GoogleGenAI({
 });
 
 /* =========================
-   ZWYKŁA ROZMOWA
+   ZWYKŁaA ROZMOWA
    ========================= */
 
 app.post("/api/chat", async (req, res) => {

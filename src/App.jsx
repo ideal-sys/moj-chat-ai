@@ -27,7 +27,7 @@ function App() {
         }
       }
     } catch (error) {
-      console.error("Nie udało się wczytać historii:", error);
+      console.error("Nie udało się wczytać histori:", error);
     }
   }, []);
 
