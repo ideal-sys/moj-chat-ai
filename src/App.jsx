@@ -334,13 +334,13 @@ function App() {
           {!activeChat || activeChat.messages.length === 0 ? (
             <div className="welcome">
               <div className="welcome-icon">
-                {mode === "image" ? "✨" : "M"}
+                {mode === "image" ? "✨" : ""}
               </div>
 
               <h2>
                 {mode === "image"
                   ? "Co mam dla Ciebie wygenerować?"
-                  : "Witaj 👋"}
+                  : "Witaj Mireczku 👋"}
               </h2>
 
               <p>

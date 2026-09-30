@@ -1071,3 +1071,158 @@ textarea:focus {
     width: 230px;
   }
 }
+/* =========================
+   MOBILE FIX
+   ========================= */
+
+html,
+body,
+#root {
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  overflow: hidden;
+}
+
+.app {
+  width: 100%;
+  min-width: 0;
+  min-height: 100dvh;
+  height: 100dvh;
+}
+
+.main {
+  min-width: 0;
+  width: 100%;
+}
+
+.chat {
+  min-width: 0;
+  width: 100%;
+  max-width: 900px;
+}
+
+.input-area {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+}
+
+.input-wrapper {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 900px;
+  min-width: 0;
+}
+
+textarea {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.generated-image {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+@media (max-width: 750px) {
+  .app {
+    height: 100dvh;
+    min-height: 100dvh;
+    padding: 0;
+    gap: 0;
+  }
+
+  .main {
+    width: 100%;
+    max-width: 100%;
+    height: 100dvh;
+    min-height: 0;
+    border-radius: 0;
+  }
+
+  .header {
+    flex-shrink: 0;
+    width: 100%;
+  }
+
+  .chat {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    padding: 24px 11px 125px;
+    overflow-x: hidden;
+  }
+
+  .message {
+    max-width: 88%;
+  }
+
+  .image-message {
+    max-width: 100%;
+  }
+
+  .input-area {
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    padding: 10px 10px calc(10px + env(safe-area-inset-bottom));
+  }
+
+  .input-wrapper {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  textarea {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 400px) {
+  .chat {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+
+  .message {
+    max-width: 90%;
+    font-size: 13px;
+  }
+
+  .input-area {
+    padding-left: 7px;
+    padding-right: 7px;
+  }
+
+  .input-wrapper {
+    gap: 5px;
+  }
+
+  .plus-button,
+  .send-button {
+    width: 43px;
+    height: 43px;
+  }
+
+  textarea {
+    min-height: 43px;
+    padding-left: 11px;
+    padding-right: 11px;
+  }
+}
