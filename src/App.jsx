@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import "./App.css";
 
 function App() {
@@ -7,6 +7,10 @@ function App() {
   const [activeChatId, setActiveChatId] = useState(null);
   const [loading, setLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [plusMenuOpen, setPlusMenuOpen] = useState(false);
+  const [mode, setMode] = useState("chat");
+  const [selectedFile, setSelectedFile] = useState(null);
+  const fileInputRef = useRef(null);
   // ID ostatniej interakcji Gemini. Dzięki temu Gemini może pamiętać
   // wcześniejsze rozmowy także po zamknięciu strony.
   const [memoryInteractionId, setMemoryInteractionId] = useState(
@@ -29,7 +33,11 @@ function App() {
 
   // Automatyczne zapisywanie
   useEffect(() => {
-    localStorage.setItem("mirus-ai-chats", JSON.stringify(chats));
+    try {
+      localStorage.setItem("mirus-ai-chats", JSON.stringify(chats));
+    } catch (error) {
+      console.warn("Historia jest zbyt duża, aby zapisać ją w localStorage.", error);
+    }
   }, [chats]);
 
   // Zapamiętujemy identyfikator rozmowy po stronie Gemini.
@@ -58,6 +66,9 @@ function App() {
     setChats((prev) => [newChat, ...prev]);
     setActiveChatId(newChat.id);
     setMessage("");
+    setSelectedFile(null);
+    setMode("chat");
+    setPlusMenuOpen(false);
   }
 
   function deleteChat(id) {
@@ -91,8 +102,30 @@ function App() {
     );
   }
 
+  function fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result).split(",")[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function chooseFile(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 15 * 1024 * 1024) {
+      alert("Plik jest za duży. Maksymalny rozmiar to 15 MB.");
+      e.target.value = "";
+      return;
+    }
+    setSelectedFile(file);
+    setMode("file");
+    setPlusMenuOpen(false);
+  }
+
   async function sendMessage() {
-    if (!message.trim() || loading) return;
+    if ((!message.trim() && !selectedFile) || loading) return;
 
     let chatId = activeChatId;
 
@@ -100,7 +133,7 @@ function App() {
     if (!chatId) {
       const newChat = {
         id: Date.now(),
-        title: message.trim().slice(0, 35),
+        title: (message.trim() || selectedFile?.name || "Nowy czat").slice(0, 35),
         messages: [],
       };
 
@@ -110,7 +143,12 @@ function App() {
     }
 
     const userMessage = message.trim();
+    const fileForRequest = selectedFile;
+    const currentMode = mode;
     setMessage("");
+    setSelectedFile(null);
+    setMode("chat");
+    setPlusMenuOpen(false);
 
     const currentChat = chats.find((chat) => chat.id === chatId);
     const currentMessages = currentChat?.messages || [];
@@ -119,7 +157,8 @@ function App() {
       ...currentMessages,
       {
         role: "user",
-        text: userMessage,
+        text: userMessage || (fileForRequest ? "Przeanalizuj ten plik" : ""),
+        attachmentName: fileForRequest?.name || null,
       },
     ];
 
@@ -130,7 +169,7 @@ function App() {
               ...chat,
               title:
                 chat.title === "Nowy czat"
-                  ? userMessage.slice(0, 35)
+                  ? (userMessage || fileForRequest?.name || "Nowy czat").slice(0, 35)
                   : chat.title,
               messages: updatedMessages,
             }
@@ -141,16 +180,32 @@ function App() {
     setLoading(true);
 
     try {
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          message: userMessage,
-          previousInteractionId: memoryInteractionId,
-        }),
-      });
+      let response;
+      if (currentMode === "image") {
+        response = await fetch("/api/generate-image", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt: userMessage }),
+        });
+      } else {
+        let filePayload = null;
+        if (fileForRequest) {
+          filePayload = {
+            name: fileForRequest.name,
+            mimeType: fileForRequest.type || "application/octet-stream",
+            data: await fileToBase64(fileForRequest),
+          };
+        }
+        response = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            message: userMessage,
+            previousInteractionId: memoryInteractionId,
+            file: filePayload,
+          }),
+        });
+      }
 
       const data = await response.json();
 
@@ -166,7 +221,8 @@ function App() {
         ...updatedMessages,
         {
           role: "assistant",
-          text: data.reply,
+          text: data.reply || (data.image ? "Gotowe — wygenerowałem obraz." : ""),
+          image: data.image || null,
         },
       ];
 
@@ -310,7 +366,14 @@ function App() {
                   msg.role === "user" ? "user" : "assistant"
                 }`}
               >
+                {msg.attachmentName && <div className="message-attachment">📎 {msg.attachmentName}</div>}
                 {msg.text}
+                {msg.image && (
+                  <div className="generated-image-wrap">
+                    <img className="generated-image" src={msg.image} alt="Obraz wygenerowany przez AI" />
+                    <a className="image-download" href={msg.image} download="mirus-ai.png">Pobierz obraz</a>
+                  </div>
+                )}
               </div>
             ))
           )}
@@ -323,17 +386,39 @@ function App() {
         </main>
 
         <div className="input-area">
-          <textarea
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Napisz wiadomość..."
-            rows="1"
-          />
-
-          <button onClick={sendMessage} disabled={loading}>
-            Wyślij
-          </button>
+          <div className="composer">
+            {selectedFile && (
+              <div className="selected-file">
+                <span>📎 {selectedFile.name}</span>
+                <button type="button" onClick={() => { setSelectedFile(null); setMode("chat"); }} aria-label="Usuń plik">×</button>
+              </div>
+            )}
+            {mode === "image" && !selectedFile && (
+              <div className="mode-chip">🖼️ Generowanie obrazu <button type="button" onClick={() => setMode("chat")}>×</button></div>
+            )}
+            <div className="composer-row">
+              <div className="plus-wrap">
+                <button type="button" className="plus-button" onClick={() => setPlusMenuOpen((v) => !v)} aria-label="Dodaj" aria-expanded={plusMenuOpen}>+</button>
+                {plusMenuOpen && (
+                  <div className="plus-menu">
+                    <button type="button" onClick={() => { setMode("image"); setSelectedFile(null); setPlusMenuOpen(false); }}>🖼️ <span>Generuj obraz</span></button>
+                    <button type="button" onClick={() => fileInputRef.current?.click()}>📎 <span>Dodaj plik</span></button>
+                  </div>
+                )}
+              </div>
+              <input ref={fileInputRef} className="hidden-file-input" type="file" accept="image/*,.pdf,.txt,.csv,.json,.xml" onChange={chooseFile} />
+              <textarea
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={mode === "image" ? "Opisz obraz, który mam wygenerować..." : selectedFile ? "Napisz, co mam sprawdzić w pliku..." : "Napisz wiadomość..."}
+                rows="1"
+              />
+              <button className="send-button" onClick={sendMessage} disabled={loading || (!message.trim() && !selectedFile)}>
+                {mode === "image" ? "Generuj" : "Wyślij"}
+              </button>
+            </div>
+          </div>
         </div>
 
       </div>

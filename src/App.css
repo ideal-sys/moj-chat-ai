@@ -896,3 +896,59 @@ textarea {
     margin-top: 5vh;
   }
 }
+
+/* =========================
+   MENU + / PLIKI / OBRAZY
+   ========================= */
+.composer { width: min(100%, 900px); min-width: 0; }
+.composer-row { display: flex; align-items: flex-end; gap: 8px; }
+.composer-row textarea { min-width: 0; }
+.plus-wrap { position: relative; flex: 0 0 auto; }
+.input-area .plus-button {
+  width: 48px; min-width: 48px; height: 48px; padding: 0; border-radius: 16px;
+  background: rgba(255,255,255,.82); color: #343840; border: 1px solid rgba(190,195,204,.65);
+  font-size: 27px; font-weight: 300; box-shadow: 0 8px 25px rgba(31,38,52,.07);
+}
+.input-area .plus-button:hover:not(:disabled) { background: #fff; }
+.plus-menu {
+  position: absolute; left: 0; bottom: 58px; z-index: 30; width: 190px; padding: 7px;
+  border: 1px solid rgba(255,255,255,.9); border-radius: 15px; background: rgba(255,255,255,.96);
+  box-shadow: 0 14px 40px rgba(31,38,52,.16); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+}
+.input-area .plus-menu button {
+  width: 100%; min-width: 0; height: 42px; padding: 0 11px; display: flex; align-items: center; gap: 9px;
+  justify-content: flex-start; border: 0; border-radius: 10px; background: transparent; color: #292d35;
+  box-shadow: none; font-size: 13px; text-align: left;
+}
+.input-area .plus-menu button:hover { transform: none; background: rgba(235,238,243,.9); box-shadow: none; }
+.hidden-file-input { display: none; }
+.selected-file, .mode-chip {
+  width: fit-content; max-width: 100%; margin: 0 0 7px 56px; padding: 7px 9px 7px 11px;
+  display: flex; align-items: center; gap: 8px; border-radius: 11px; background: rgba(255,255,255,.82);
+  border: 1px solid rgba(190,195,204,.55); font-size: 12px; color: #555b65;
+}
+.selected-file span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.input-area .selected-file button, .input-area .mode-chip button {
+  min-width: 24px; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 7px;
+  background: transparent; color: #6f7580; box-shadow: none; font-size: 17px;
+}
+.input-area .selected-file button:hover, .input-area .mode-chip button:hover { transform: none; background: rgba(0,0,0,.05); box-shadow: none; }
+.message-attachment { margin-bottom: 5px; font-size: 12px; opacity: .78; font-weight: 600; }
+.generated-image-wrap { margin-top: 10px; }
+.generated-image { display: block; width: min(100%, 520px); max-height: 65vh; object-fit: contain; border-radius: 13px; }
+.image-download { display: inline-block; margin-top: 8px; color: inherit; font-size: 12px; text-decoration: underline; opacity: .72; }
+
+@media (max-width: 750px) {
+  .composer-row { gap: 7px; }
+  .input-area .plus-button { width: 46px; min-width: 46px; height: 46px; border-radius: 14px; }
+  .input-area .send-button { width: auto; min-width: 70px; }
+  .plus-menu { position: fixed; left: 10px; bottom: calc(68px + env(safe-area-inset-bottom)); width: 205px; }
+  .selected-file, .mode-chip { margin-left: 53px; max-width: calc(100% - 53px); }
+  .generated-image { max-height: 52vh; }
+}
+
+@media (max-width: 420px) {
+  .input-area .send-button { min-width: 66px; width: auto; padding: 0 9px; }
+  .input-area .plus-button { width: 44px; min-width: 44px; }
+  .composer-row { gap: 6px; }
+}

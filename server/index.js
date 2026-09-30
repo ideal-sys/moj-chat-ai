@@ -9,16 +9,14 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3001;
-
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 app.use(cors());
-app.use(express.json());
+// Załączniki są wysyłane jako base64. Limit 25 MB chroni Render przed zbyt dużymi żądaniami.
+app.use(express.json({ limit: "25mb" }));
 
-const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY,
-});
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 const SYSTEM_INSTRUCTION = `
 Zawsze odpowiadaj po polsku.
@@ -30,67 +28,98 @@ Nie udawaj, że pamiętasz coś, czego nie ma w przekazanym kontekście.
 
 app.post("/api/chat", async (req, res) => {
   try {
-    const { message, previousInteractionId } = req.body;
+    const { message, previousInteractionId, file } = req.body;
+    const cleanMessage = (message || "").trim();
 
-    if (!message || !message.trim()) {
+    if (!cleanMessage && !file) {
+      return res.status(400).json({ error: "Wiadomość jest pusta." });
+    }
+
+    // Zwykły czat zachowuje dotychczasową pamięć Interactions API.
+    if (!file) {
+      const options = {
+        model: "gemini-3.5-flash-lite",
+        system_instruction: SYSTEM_INSTRUCTION,
+        input: cleanMessage,
+      };
+
+      if (previousInteractionId) options.previous_interaction_id = previousInteractionId;
+
+      let interaction;
+      try {
+        interaction = await ai.interactions.create(options);
+      } catch (firstError) {
+        if (previousInteractionId) {
+          console.warn("Nie udało się kontynuować pamięci Gemini. Rozpoczynam nowy kontekst.");
+          interaction = await ai.interactions.create({
+            model: "gemini-3.5-flash-lite",
+            system_instruction: SYSTEM_INSTRUCTION,
+            input: cleanMessage,
+          });
+        } else {
+          throw firstError;
+        }
+      }
+
+      return res.json({ reply: interaction.output_text, interactionId: interaction.id });
+    }
+
+    // Analiza pliku. Obsługujemy obrazy, PDF-y oraz pliki tekstowe.
+    if (!file.data || !file.mimeType || !file.name) {
+      return res.status(400).json({ error: "Nieprawidłowy załącznik." });
+    }
+
+    const supported =
+      file.mimeType.startsWith("image/") ||
+      file.mimeType === "application/pdf" ||
+      file.mimeType.startsWith("text/") ||
+      ["application/json", "application/xml"].includes(file.mimeType);
+
+    if (!supported) {
       return res.status(400).json({
-        error: "Wiadomość jest pusta.",
+        error: "Ten typ pliku nie jest jeszcze obsługiwany. Dodaj PDF, obraz, TXT, JSON, CSV lub XML.",
       });
     }
 
-    const input = message.trim();
-
-    const options = {
+    const prompt = cleanMessage || `Przeanalizuj załączony plik „${file.name}” i opisz najważniejsze informacje.`;
+    const response = await ai.models.generateContent({
       model: "gemini-3.5-flash-lite",
-      system_instruction: SYSTEM_INSTRUCTION,
-      input,
-    };
-
-    if (previousInteractionId) {
-      options.previous_interaction_id = previousInteractionId;
-    }
-
-    let interaction;
-
-    try {
-      interaction = await ai.interactions.create(options);
-    } catch (firstError) {
-      // Jeśli zapisany identyfikator wygasł lub został usunięty,
-      // rozpoczynamy nowy łańcuch zamiast całkowicie blokować czat.
-      if (previousInteractionId) {
-        console.warn("Nie udało się kontynuować pamięci Gemini. Rozpoczynam nowy kontekst.");
-        interaction = await ai.interactions.create({
-          model: "gemini-3.5-flash-lite",
-          system_instruction: SYSTEM_INSTRUCTION,
-          input,
-        });
-      } else {
-        throw firstError;
-      }
-    }
-
-    res.json({
-      reply: interaction.output_text,
-      interactionId: interaction.id,
+      contents: [
+        { inlineData: { mimeType: file.mimeType, data: file.data } },
+        { text: prompt },
+      ],
+      config: { systemInstruction: SYSTEM_INSTRUCTION },
     });
+
+    return res.json({ reply: response.text || "Nie udało się odczytać odpowiedzi z analizy pliku." });
   } catch (error) {
     console.error("GEMINI ERROR:", error);
-
-    res.status(500).json({
-      error: "Nie udało się uzyskać odpowiedzi od Gemini.",
-    });
+    res.status(500).json({ error: "Nie udało się uzyskać odpowiedzi od Gemini." });
   }
 });
 
-// Gotowa aplikacja React
+app.post("/api/generate-image", async (req, res) => {
+  try {
+    const prompt = (req.body.prompt || "").trim();
+    if (!prompt) return res.status(400).json({ error: "Opisz obraz, który mam wygenerować." });
+
+    const interaction = await ai.interactions.create({
+      model: "gemini-3.1-flash-image",
+      input: prompt,
+      response_format: { type: "image", aspect_ratio: "1:1", image_size: "1K" },
+    });
+
+    const image = interaction.output_image;
+    if (!image?.data) throw new Error("Gemini nie zwrócił obrazu.");
+
+    res.json({ image: `data:${image.mime_type || "image/png"};base64,${image.data}` });
+  } catch (error) {
+    console.error("IMAGE ERROR:", error);
+    res.status(500).json({ error: "Nie udało się wygenerować obrazu." });
+  }
+});
+
 const distPath = path.join(__dirname, "..", "dist");
-
 app.use(express.static(distPath));
-
-app.get("/{*splat}", (req, res) => {
-  res.sendFile(path.join(distPath, "index.html"));
-});
-
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Backend działa na porcie ${PORT}`);
-});
+app.get("/{*splat}", (req, res) => res.sendFile(path.join(distPath, "index.html")));
+app.listen(PORT, "0.0.0.0", () => console.log(`Backend działa na porcie ${PORT}`));
