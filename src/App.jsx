@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import "./App.css";
 
 function App() {
@@ -7,11 +7,8 @@ function App() {
   const [activeChatId, setActiveChatId] = useState(null);
   const [loading, setLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  // ID ostatniej interakcji Gemini. Dzięki temu Gemini może pamiętać
-  // wcześniejsze rozmowy także po zamknięciu strony.
-  const [memoryInteractionId, setMemoryInteractionId] = useState(
-    () => localStorage.getItem("mirus-ai-memory-id") || null
-  );
+  const textareaRef = useRef(null);
+  const chatRef = useRef(null);
 
   // Wczytanie zapisanych czatów
   useEffect(() => {
@@ -31,20 +28,6 @@ function App() {
   useEffect(() => {
     localStorage.setItem("mirus-ai-chats", JSON.stringify(chats));
   }, [chats]);
-
-  // Zapamiętujemy identyfikator rozmowy po stronie Gemini.
-  useEffect(() => {
-    if (memoryInteractionId) {
-      localStorage.setItem("mirus-ai-memory-id", memoryInteractionId);
-    } else {
-      localStorage.removeItem("mirus-ai-memory-id");
-    }
-  }, [memoryInteractionId]);
-
-  function clearAiMemory() {
-    setMemoryInteractionId(null);
-    localStorage.removeItem("mirus-ai-memory-id");
-  }
 
   const activeChat = chats.find((chat) => chat.id === activeChatId);
 
@@ -148,7 +131,6 @@ function App() {
         },
         body: JSON.stringify({
           message: userMessage,
-          previousInteractionId: memoryInteractionId,
         }),
       });
 
@@ -156,10 +138,6 @@ function App() {
 
       if (!response.ok) {
         throw new Error(data.error || "Wystąpił błąd");
-      }
-
-      if (data.interactionId) {
-        setMemoryInteractionId(data.interactionId);
       }
 
       const finalMessages = [
@@ -204,6 +182,36 @@ function App() {
     }
   }
 
+  function autoResizeTextarea() {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    textarea.style.height = "auto";
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 150)}px`;
+  }
+
+  useEffect(() => {
+    autoResizeTextarea();
+  }, [message]);
+
+  useEffect(() => {
+    const chat = chatRef.current;
+    if (!chat) return;
+
+    requestAnimationFrame(() => {
+      chat.scrollTop = chat.scrollHeight;
+    });
+  }, [activeChat?.messages?.length, loading]);
+
+  useEffect(() => {
+    const closeSidebarOnEscape = (event) => {
+      if (event.key === "Escape") setSidebarOpen(false);
+    };
+
+    window.addEventListener("keydown", closeSidebarOnEscape);
+    return () => window.removeEventListener("keydown", closeSidebarOnEscape);
+  }, []);
+
   function handleKeyDown(e) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -235,17 +243,6 @@ function App() {
 >
   + Nowy czat
 </button>
-
-          <button
-            className="new-chat"
-            onClick={() => {
-              clearAiMemory();
-              setSidebarOpen(false);
-            }}
-            title="Usuwa pamięć kontekstu Gemini. Historia czatów pozostaje."
-          >
-            🧠 Wyczyść pamięć AI
-          </button>
         </div>
 
         <div className="chat-history">
@@ -295,7 +292,7 @@ function App() {
   <span>Gemini</span>
 </header>
 
-        <main className="chat">
+        <main className="chat" ref={chatRef}>
 
           {!activeChat || activeChat.messages.length === 0 ? (
             <div className="welcome">
@@ -324,8 +321,10 @@ function App() {
 
         <div className="input-area">
           <textarea
+            ref={textareaRef}
             value={message}
             onChange={(e) => setMessage(e.target.value)}
+            onInput={autoResizeTextarea}
             onKeyDown={handleKeyDown}
             placeholder="Napisz wiadomość..."
             rows="1"
