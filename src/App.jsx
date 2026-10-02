@@ -124,6 +124,18 @@ function App() {
     setPlusMenuOpen(false);
   }
 
+  function isImageGenerationRequest(text) {
+    const value = (text || "").trim().toLowerCase();
+
+    // Rozpoznaje bezpośrednie polecenia generowania obrazu wpisane w zwykłym czacie.
+    // Celowo nie reaguje na samo słowo "obraz", żeby pytania o obrazy nadal trafiały do Gemini.
+    return /^(?:proszę\s+)?(?:wygeneruj|generuj|stwórz|utwórz|narysuj|namaluj|zrób)\b[\s\S]*/i.test(value) &&
+      (
+        /^(?:proszę\s+)?(?:wygeneruj|generuj|narysuj|namaluj)\b/i.test(value) ||
+        /\b(?:obraz|obrazek|grafikę|grafika|zdjęcie|fotkę|ilustrację|ilustracja|picture|image)\b/i.test(value)
+      );
+  }
+
   async function sendMessage() {
     if ((!message.trim() && !selectedFile) || loading) return;
 
@@ -181,7 +193,11 @@ function App() {
 
     try {
       let response;
-      if (currentMode === "image") {
+      const shouldGenerateImage =
+        currentMode === "image" ||
+        (!fileForRequest && isImageGenerationRequest(userMessage));
+
+      if (shouldGenerateImage) {
         response = await fetch("/api/generate-image", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
