@@ -186,6 +186,104 @@ Request: ${prompt}`
   }
 });
 
+
+app.post("/api/edit-image", async (req, res) => {
+  try {
+    const prompt = (req.body.prompt || "").trim();
+    const file = req.body.file;
+
+    if (!prompt) {
+      return res.status(400).json({ error: "Napisz, jak mam przerobić zdjęcie." });
+    }
+
+    if (!file?.data || !file?.mimeType?.startsWith("image/")) {
+      return res.status(400).json({ error: "Do edycji potrzebne jest zdjęcie." });
+    }
+
+    const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+    const apiToken = process.env.CLOUDFLARE_API_TOKEN;
+    if (!accountId || !apiToken) {
+      return res.status(500).json({ error: "Brak konfiguracji Cloudflare Workers AI." });
+    }
+
+    // Gemini przygotowuje prompt do edycji, ale ma zachować główny obiekt ze zdjęcia.
+    let editPrompt = prompt;
+    try {
+      const promptResponse = await ai.models.generateContent({
+        model: "gemini-3.5-flash-lite",
+        contents: [
+          { inlineData: { mimeType: file.mimeType, data: file.data } },
+          {
+            text: `Create one precise English image-to-image prompt based on the attached source photo and this Polish edit request:
+"${prompt}"
+
+The source photo is the visual reference. Preserve the identity, shape, proportions, colors and important visual features of the main product or subject unless the user explicitly asks to change them.
+If this is an advertisement request, create an attractive commercial composition around the original product, but do not invent prices, discounts, specifications, logos or claims that the user did not provide.
+Return only the final English prompt, with no explanation.`
+          }
+        ],
+      });
+
+      const rewritten = (promptResponse.text || "").trim();
+      if (rewritten) editPrompt = rewritten;
+    } catch (promptError) {
+      console.warn("EDIT PROMPT REWRITE ERROR - używam oryginalnego promptu:", promptError);
+    }
+
+    console.log("PROMPT EDYCJI:", editPrompt);
+
+    const response = await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/@cf/runwayml/stable-diffusion-v1-5-img2img`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          prompt: editPrompt,
+          image_b64: file.data,
+          strength: 0.35,
+          num_steps: 20,
+          guidance: 8.5
+        }),
+      }
+    );
+
+    const contentType = response.headers.get("content-type") || "";
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("CLOUDFLARE EDIT ERROR:", response.status, errorText);
+      throw new Error(`Cloudflare image edit error ${response.status}`);
+    }
+
+    if (contentType.startsWith("image/")) {
+      const imageBuffer = Buffer.from(await response.arrayBuffer());
+      return res.json({
+        image: `data:${contentType.split(";")[0]};base64,${imageBuffer.toString("base64")}`
+      });
+    }
+
+    const data = await response.json();
+    const base64Image =
+      data?.result?.image ||
+      data?.result?.image_b64 ||
+      data?.image ||
+      data?.image_b64;
+
+    if (!base64Image) {
+      console.error("CLOUDFLARE EDIT ERROR:", data);
+      throw new Error(data?.errors?.[0]?.message || "Cloudflare nie zwrócił edytowanego obrazu.");
+    }
+
+    res.json({ image: `data:image/png;base64,${base64Image}` });
+  } catch (error) {
+    console.error("EDIT IMAGE ERROR:", error);
+    res.status(500).json({ error: "Nie udało się przerobić zdjęcia." });
+  }
+});
+
 const distPath = path.join(__dirname, "..", "dist");
 app.use(express.static(distPath));
 app.get("/{*splat}", (req, res) => res.sendFile(path.join(distPath, "index.html")));

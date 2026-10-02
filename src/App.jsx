@@ -136,6 +136,14 @@ function App() {
       );
   }
 
+  function isImageEditRequest(text) {
+    const value = (text || "").trim().toLowerCase();
+
+    return /\b(?:przerób|przerob|edytuj|zmień|zmien|usuń|usun|dodaj|zamień|zamien|popraw|retuszuj)\b/i.test(value) ||
+      /\b(?:zrób|zrob|stwórz|stworz|wygeneruj)\b[\s\S]*\b(?:reklamę|reklame|grafikę|grafike|plakat|baner|post|reklama)\b/i.test(value) ||
+      /\b(?:na podstawie|z tego zdjęcia|z tego zdjecia|tego zdjęcia|tego zdjecia)\b/i.test(value);
+  }
+
   async function sendMessage() {
     if ((!message.trim() && !selectedFile) || loading) return;
 
@@ -197,21 +205,35 @@ function App() {
         currentMode === "image" ||
         (!fileForRequest && isImageGenerationRequest(userMessage));
 
-      if (shouldGenerateImage) {
+      let filePayload = null;
+      if (fileForRequest) {
+        filePayload = {
+          name: fileForRequest.name,
+          mimeType: fileForRequest.type || "application/octet-stream",
+          data: await fileToBase64(fileForRequest),
+        };
+      }
+
+      const shouldEditImage =
+        fileForRequest?.type?.startsWith("image/") &&
+        isImageEditRequest(userMessage);
+
+      if (shouldEditImage) {
+        response = await fetch("/api/edit-image", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            prompt: userMessage,
+            file: filePayload,
+          }),
+        });
+      } else if (shouldGenerateImage) {
         response = await fetch("/api/generate-image", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ prompt: userMessage }),
         });
       } else {
-        let filePayload = null;
-        if (fileForRequest) {
-          filePayload = {
-            name: fileForRequest.name,
-            mimeType: fileForRequest.type || "application/octet-stream",
-            data: await fileToBase64(fileForRequest),
-          };
-        }
         response = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
