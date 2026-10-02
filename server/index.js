@@ -103,16 +103,31 @@ app.post("/api/generate-image", async (req, res) => {
     const prompt = (req.body.prompt || "").trim();
     if (!prompt) return res.status(400).json({ error: "Opisz obraz, który mam wygenerować." });
 
-    const interaction = await ai.interactions.create({
-      model: "gemini-3.1-flash-image",
-      input: prompt,
-      response_format: { type: "image", aspect_ratio: "1:1", image_size: "1K" },
-    });
+    const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+    const apiToken = process.env.CLOUDFLARE_API_TOKEN;
+    if (!accountId || !apiToken) {
+      return res.status(500).json({ error: "Brak konfiguracji Cloudflare Workers AI." });
+    }
 
-    const image = interaction.output_image;
-    if (!image?.data) throw new Error("Gemini nie zwrócił obrazu.");
+    const response = await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/@cf/black-forest-labs/flux-1-schnell`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ prompt, steps: 4 }),
+      }
+    );
 
-    res.json({ image: `data:${image.mime_type || "image/png"};base64,${image.data}` });
+    const data = await response.json();
+    if (!response.ok || !data?.success || !data?.result?.image) {
+      console.error("CLOUDFLARE IMAGE ERROR:", data);
+      throw new Error(data?.errors?.[0]?.message || "Cloudflare nie zwrócił obrazu.");
+    }
+
+    res.json({ image: `data:image/png;base64,${data.result.image}` });
   } catch (error) {
     console.error("IMAGE ERROR:", error);
     res.status(500).json({ error: "Nie udało się wygenerować obrazu." });
