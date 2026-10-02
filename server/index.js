@@ -109,6 +109,7 @@ app.post("/api/generate-image", async (req, res) => {
       return res.status(500).json({ error: "Brak konfiguracji Cloudflare Workers AI." });
     }
 
+    console.log("PROMPT WYSYŁANY DO CLOUDFLARE:", prompt);
     const response = await fetch(
       `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/@cf/black-forest-labs/flux-1-schnell`,
       {
